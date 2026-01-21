@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { GoogleGenAI, Type } from "@google/genai";
-import { Loader2, Copy, Check, Mail, User, Building2, PenLine, Sparkles, Send } from "lucide-react";
+import { Loader2, Copy, Check, Mail, User, Building2, PenLine, Sparkles, Send, AlertCircle } from "lucide-react";
 
 // --- UI Components (Shadcn-like) ---
 
@@ -130,12 +130,6 @@ const App = () => {
   // State: UI
   const [copiedSubject, setCopiedSubject] = useState(false);
   const [copiedBody, setCopiedBody] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
-
-  // Check mount status to prevent hydration mismatch if used in SSR
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
 
   // Load profile on mount
   useEffect(() => {
@@ -156,14 +150,14 @@ const App = () => {
 
   // Save profile on change
   useEffect(() => {
-    if (isMounted && typeof window !== 'undefined') {
+    if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
       } catch (e) {
         console.error("Failed to save profile", e);
       }
     }
-  }, [profile, isMounted]);
+  }, [profile]);
 
   const handleCopy = (text: string, type: "subject" | "body") => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -188,7 +182,20 @@ const App = () => {
     setError(null);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      // 1. Check API Key
+      // Safe access to process.env to prevent ReferenceError in strict browser envs
+      let apiKey = "";
+      try {
+         apiKey = process.env.API_KEY || "";
+      } catch (e) {
+         console.warn("process.env access failed", e);
+      }
+
+      if (!apiKey) {
+        throw new Error("APIキーが設定されていません。");
+      }
+
+      const ai = new GoogleGenAI({ apiKey: apiKey });
       
       const systemInstruction = `
         あなたは優秀なビジネス秘書AIです。
@@ -235,31 +242,45 @@ const App = () => {
       });
 
       const text = response.text;
-      if (text) {
-        const json = JSON.parse(text) as GeneratedEmail;
-        // Append signature if it exists and isn't already in the body (simple check)
-        let finalBody = json.body;
-        if (profile.signature && !finalBody.includes(profile.signature)) {
-            finalBody += `\n\n${profile.signature}`;
-        }
-        
-        setGeneratedEmail({
-            ...json,
-            body: finalBody
-        });
+      
+      if (!text) {
+        throw new Error("AIからの応答が空でした。");
       }
+
+      // 3. Robust JSON Parsing
+      let json: GeneratedEmail;
+      try {
+        // Clean markdown code blocks if present (e.g. ```json ... ```)
+        let cleanText = text.trim();
+        if (cleanText.startsWith("```")) {
+            cleanText = cleanText.replace(/^```(json)?\n?/, "").replace(/\n?```$/, "");
+        }
+        json = JSON.parse(cleanText) as GeneratedEmail;
+      } catch (parseError) {
+        console.error("JSON Parse Error:", parseError, "Raw Text:", text);
+        throw new Error("AIの応答を解析できませんでした。");
+      }
+
+      // Append signature if it exists and isn't already in the body
+      let finalBody = json.body || "";
+      if (profile.signature && !finalBody.includes(profile.signature)) {
+          finalBody += `\n\n${profile.signature}`;
+      }
+      
+      setGeneratedEmail({
+          subject: json.subject || "(件名なし)",
+          body: finalBody
+      });
+
     } catch (err: any) {
-      console.error("Generation error:", err);
-      setError("生成中にエラーが発生しました。もう一度お試しください。");
+      console.error("Generation error details:", err);
+      // User-friendly error message
+      const errorMessage = err instanceof Error ? err.message : "不明なエラーが発生しました";
+      setError(`エラーが発生しました: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
   };
-
-  // Prevent rendering until client-side hydration is complete if strict mode is concern
-  if (!isMounted) {
-      return null;
-  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-4 md:p-8">
@@ -403,8 +424,9 @@ const App = () => {
             </div>
             
             {error && (
-              <div className="p-3 text-sm text-red-600 bg-red-50 rounded-md border border-red-100 animate-in fade-in slide-in-from-top-1">
-                {error}
+              <div className="flex items-center gap-2 p-3 text-sm text-red-600 bg-red-50 rounded-md border border-red-100 animate-in fade-in slide-in-from-top-1">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{error}</span>
               </div>
             )}
           </div>
