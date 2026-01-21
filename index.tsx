@@ -130,13 +130,24 @@ const App = () => {
   // State: UI
   const [copiedSubject, setCopiedSubject] = useState(false);
   const [copiedBody, setCopiedBody] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Check mount status to prevent hydration mismatch if used in SSR
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Load profile on mount
   useEffect(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (saved) {
+    if (typeof window !== 'undefined') {
       try {
-        setProfile(JSON.parse(saved));
+        const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') {
+            setProfile(prev => ({ ...prev, ...parsed }));
+          }
+        }
       } catch (e) {
         console.error("Failed to load profile", e);
       }
@@ -145,17 +156,25 @@ const App = () => {
 
   // Save profile on change
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
-  }, [profile]);
+    if (isMounted && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
+      } catch (e) {
+        console.error("Failed to save profile", e);
+      }
+    }
+  }, [profile, isMounted]);
 
   const handleCopy = (text: string, type: "subject" | "body") => {
-    navigator.clipboard.writeText(text);
-    if (type === "subject") {
-      setCopiedSubject(true);
-      setTimeout(() => setCopiedSubject(false), 2000);
-    } else {
-      setCopiedBody(true);
-      setTimeout(() => setCopiedBody(false), 2000);
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        navigator.clipboard.writeText(text);
+        if (type === "subject") {
+        setCopiedSubject(true);
+        setTimeout(() => setCopiedSubject(false), 2000);
+        } else {
+        setCopiedBody(true);
+        setTimeout(() => setCopiedBody(false), 2000);
+        }
     }
   };
 
@@ -236,6 +255,11 @@ const App = () => {
       setIsLoading(false);
     }
   };
+
+  // Prevent rendering until client-side hydration is complete if strict mode is concern
+  if (!isMounted) {
+      return null;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-4 md:p-8">
@@ -457,5 +481,8 @@ const App = () => {
   );
 };
 
-const root = createRoot(document.getElementById("root")!);
-root.render(<App />);
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  const root = createRoot(rootElement);
+  root.render(<App />);
+}
