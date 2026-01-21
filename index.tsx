@@ -111,6 +111,9 @@ interface GeneratedEmail {
 }
 
 const App = () => {
+  // State: Mounting
+  const [mounted, setMounted] = useState(false);
+
   // State: Profile
   const [profile, setProfile] = useState<UserProfile>({
     company: "",
@@ -132,8 +135,10 @@ const App = () => {
   const [copiedSubject, setCopiedSubject] = useState(false);
   const [copiedBody, setCopiedBody] = useState(false);
 
-  // Load profile on mount
+  // Handle Mounting and Initial Load
   useEffect(() => {
+    setMounted(true);
+    
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -151,14 +156,14 @@ const App = () => {
 
   // Save profile on change
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (mounted && typeof window !== 'undefined') {
       try {
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
       } catch (e) {
         console.error("Failed to save profile", e);
       }
     }
-  }, [profile]);
+  }, [profile, mounted]);
 
   const handleCopy = (text: string, type: "subject" | "body") => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -282,6 +287,11 @@ const App = () => {
       setIsLoading(false);
     }
   };
+
+  // Prevent hydration mismatch by only rendering after mount
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-4 md:p-8">
