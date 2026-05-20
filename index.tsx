@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { GoogleGenAI, Type } from "@google/genai";
+import Anthropic from "@anthropic-ai/sdk";
 import { Loader2, Copy, Check, Mail, User, Building2, PenLine, Sparkles, Send, AlertCircle } from "lucide-react";
 
 // --- UI Components (Shadcn-like) ---
@@ -138,7 +138,7 @@ const App = () => {
   // Handle Mounting and Initial Load
   useEffect(() => {
     setMounted(true);
-    
+
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -189,7 +189,6 @@ const App = () => {
 
     try {
       // 1. Check API Key
-      // Safe access to process.env to prevent ReferenceError in strict browser envs
       let apiKey = "";
       try {
          apiKey = process.env.API_KEY || "";
@@ -201,16 +200,16 @@ const App = () => {
         throw new Error("APIキーが設定されていません。");
       }
 
-      const ai = new GoogleGenAI({ apiKey: apiKey });
-      
+      const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+
       const systemInstruction = `
         あなたは優秀なビジネス秘書AIです。
         ユーザーの情報、受信メール、返信の要点を元に、最適なビジネスメールを作成してください。
-        
+
         【要件】
         1. 文脈に沿った自然な日本語を使用すること。
         2. 選択されたトーン（${tone}）に合わせること。
-        3. 出力は必ずJSON形式で、subject（件名）とbody（本文）を含めること。
+        3. 出力は必ずJSONのみで返すこと。マークダウンやコードブロックは使わず、{"subject": "件名", "body": "本文"}の形式のみで返すこと。
         4. 本文には、ユーザーの署名を自動的に含めないでください（UI側で管理する場合があるため）。ただし、文脈上必要なら入れても構いません。
       `;
 
@@ -230,25 +229,15 @@ const App = () => {
         ${TONE_OPTIONS.find(t => t.value === tone)?.label}
       `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-          systemInstruction: systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              subject: { type: Type.STRING, description: "メールの件名" },
-              body: { type: Type.STRING, description: "メールの本文" },
-            },
-            required: ["subject", "body"],
-          },
-        },
+      const response = await client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        system: systemInstruction,
+        messages: [{ role: "user", content: prompt }],
       });
 
-      const text = response.text;
-      
+      const text = response.content[0].type === "text" ? response.content[0].text : "";
+
       if (!text) {
         throw new Error("AIからの応答が空でした。");
       }
@@ -272,7 +261,7 @@ const App = () => {
       if (profile.signature && !finalBody.includes(profile.signature)) {
           finalBody += `\n\n${profile.signature}`;
       }
-      
+
       setGeneratedEmail({
           subject: json.subject || "(件名なし)",
           body: finalBody
@@ -296,7 +285,7 @@ const App = () => {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
-        
+
         {/* Header */}
         <header className="flex items-center justify-between pb-6 border-b border-slate-200">
           <div className="flex items-center gap-3">
@@ -311,10 +300,10 @@ const App = () => {
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          
+
           {/* LEFT COLUMN: Input */}
           <div className="space-y-6">
-            
+
             {/* 1. Profile Section */}
             <Card>
               <CardHeader className="pb-4">
@@ -417,8 +406,8 @@ const App = () => {
                     </div>
                 </div>
               </div>
-              <Button 
-                onClick={generateEmail} 
+              <Button
+                onClick={generateEmail}
                 disabled={isLoading}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all hover:shadow-lg"
               >
@@ -433,7 +422,7 @@ const App = () => {
                 )}
               </Button>
             </div>
-            
+
             {error && (
               <div className="flex items-center gap-2 p-3 text-sm text-red-600 bg-red-50 rounded-md border border-red-100 animate-in fade-in slide-in-from-top-1">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -451,7 +440,7 @@ const App = () => {
                   生成結果
                 </CardTitle>
               </CardHeader>
-              
+
               <CardContent className="flex-1 flex flex-col p-6 gap-6">
                 {!generatedEmail ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-slate-400 space-y-4 min-h-[300px]">
