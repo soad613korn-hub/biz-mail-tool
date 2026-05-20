@@ -1,7 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import Anthropic from "@anthropic-ai/sdk";
 import { Loader2, Copy, Check, Mail, User, Building2, PenLine, Sparkles, Send, AlertCircle } from "lucide-react";
 
 // --- UI Components (Shadcn-like) ---
@@ -188,20 +187,6 @@ const App = () => {
     setError(null);
 
     try {
-      // 1. Check API Key
-      let apiKey = "";
-      try {
-         apiKey = process.env.API_KEY || "";
-      } catch (e) {
-         console.warn("process.env access failed", e);
-      }
-
-      if (!apiKey) {
-        throw new Error("APIキーが設定されていません。");
-      }
-
-      const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-
       const systemInstruction = `
         あなたは優秀なビジネス秘書AIです。
         ユーザーの情報、受信メール、返信の要点を元に、最適なビジネスメールを作成してください。
@@ -229,14 +214,19 @@ const App = () => {
         ${TONE_OPTIONS.find(t => t.value === tone)?.label}
       `;
 
-      const response = await client.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 1024,
-        system: systemInstruction,
-        messages: [{ role: "user", content: prompt }],
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ system: systemInstruction, prompt }),
       });
 
-      const text = response.content[0].type === "text" ? response.content[0].text : "";
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "サーバーエラーが発生しました");
+      }
+
+      const data = await res.json();
+      const text = data.text;
 
       if (!text) {
         throw new Error("AIからの応答が空でした。");
