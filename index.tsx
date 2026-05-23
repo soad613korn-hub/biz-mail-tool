@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { Loader2, Copy, Check, Mail, User, Building2, PenLine, Sparkles, Send, AlertCircle } from "lucide-react";
+import { Loader2, Copy, Check, Mail, User, Building2, PenLine, Sparkles, Send, AlertCircle, CheckCircle2, X } from "lucide-react";
 
 // --- UI Components (Shadcn-like) ---
 
@@ -87,6 +87,35 @@ const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HT
 );
 Button.displayName = "Button";
 
+// --- Toast ---
+const Toast = ({ message, type, onClose }) => {
+  useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(onClose, 4000);
+    return () => clearTimeout(t);
+  }, [message, onClose]);
+
+  if (!message) return null;
+  return (
+    <div className="fixed bottom-4 right-4 z-50">
+      <div className={cn(
+        "flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border",
+        type === "success"
+          ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+          : "bg-red-50 border-red-200 text-red-800"
+      )}>
+        {type === "success"
+          ? <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+          : <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />}
+        <p className="text-sm font-medium pr-2">{message}</p>
+        <button onClick={onClose} className="p-1 rounded-full hover:bg-black/5 transition-colors">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // --- Main Application ---
 
 const TONE_OPTIONS = [
@@ -94,6 +123,7 @@ const TONE_OPTIONS = [
   { value: "polite", label: "丁寧 (Polite)" },
   { value: "apologetic", label: "謝罪 (Apologetic)" },
   { value: "friendly", label: "親密 (Friendly)" },
+  { value: "firm",       label: "強気 (Firm)" },
 ];
 
 const LOCAL_STORAGE_KEY = "biz_mail_profile_v1";
@@ -128,11 +158,14 @@ const App = () => {
   // State: Generation
   const [generatedEmail, setGeneratedEmail] = useState<GeneratedEmail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState({ message: null, type: "success" });
 
   // State: UI
   const [copiedSubject, setCopiedSubject] = useState(false);
   const [copiedBody, setCopiedBody] = useState(false);
+
+  const showToast = (message, type = "success") => setToast({ message, type });
+  const closeToast = () => setToast(prev => ({ ...prev, message: null }));
 
   // Handle Mounting and Initial Load
   useEffect(() => {
@@ -179,13 +212,11 @@ const App = () => {
 
   const generateEmail = async () => {
     if (!profile.name && !instructions && !receivedEmail) {
-      setError("情報が不足しています。プロファイルや指示を入力してください。");
+      showToast("受信メールか返信指示を入力してください。", "error");
       return;
     }
 
     setIsLoading(true);
-    setError(null);
-
     try {
       const systemInstruction = `
         あなたは優秀なビジネス秘書AIです。
@@ -256,12 +287,13 @@ const App = () => {
           subject: json.subject || "(件名なし)",
           body: finalBody
       });
+      showToast("メールを生成しました", "success");
 
     } catch (err: any) {
       console.error("Generation error details:", err);
       // User-friendly error message
       const errorMessage = err instanceof Error ? err.message : "不明なエラーが発生しました";
-      setError(`エラーが発生しました: ${errorMessage}`);
+      showToast(`エラー: ${errorMessage}`, "error");
     } finally {
       setIsLoading(false);
     }
@@ -412,13 +444,6 @@ const App = () => {
                 )}
               </Button>
             </div>
-
-            {error && (
-              <div className="flex items-center gap-2 p-3 text-sm text-red-600 bg-red-50 rounded-md border border-red-100 animate-in fade-in slide-in-from-top-1">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
           </div>
 
           {/* RIGHT COLUMN: Output */}
@@ -490,6 +515,7 @@ const App = () => {
         </div>
       </div>
     </div>
+      <Toast message={toast.message} type={toast.type} onClose={closeToast} />
   );
 };
 
