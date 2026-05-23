@@ -514,8 +514,8 @@ const App = () => {
           </div>
         </div>
       </div>
-    </div>
       <Toast message={toast.message} type={toast.type} onClose={closeToast} />
+    </div>
   );
 };
 
